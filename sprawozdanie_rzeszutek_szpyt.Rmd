@@ -1,0 +1,147 @@
+---
+title: "Sprawozdanie 4"
+author: "Katarzyna Rzeszutek, Karol Szpyt"
+date: "18 stycznia 2020"
+output:
+  html_document:
+    code_folding: "hide"
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(psych)
+library(corrplot)
+library(tseries)
+library(lmtest)
+library(bbmle)
+library(kableExtra)
+```
+
+```{r include=FALSE}
+data <- read.csv("DaneZ4.csv", sep = ";")
+```
+## ZAD1  
+
+### Podział danych za zbior uczący oraz testowy
+```{r}
+set.seed(293487)
+inx <- sample(1:1000, 750)
+data.train <- data[inx, ]
+data.test <- data[-inx, ]
+```
+### Statystyki opisowe
+```{r}
+wzp.zm <- function(dat) 
+{
+  sd(dat)/mean(dat)
+}
+zm.df <- t(as.data.frame(lapply(as.list(data), wzp.zm)))
+colnames(zm.df) <- "wsp.zm"
+
+cbind(describe(data)[c(3, 4, 11, 12)], zm.df) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = T)
+
+```
+### Braki danych
+```{r}
+table(is.na(data))
+```
+Braki danych nie występują  
+
+### Boxplot
+```{r echo=FALSE, fig.align='center'}
+boxplot(data)
+```
+
+### Histogramy
+
+```{r echo=FALSE, fig.width=15, fig.align='center', dev='svg', out.width='1600px', echo=FALSE}
+hist.dnorm <- function(dat, i)
+{
+  g <- dat[, i]
+  
+  h <- hist(g, breaks = 10, density = 10,
+            col = "lightgray", xlab = "X", main = as.character(colnames(dat)[i])) 
+  xfit <- seq(min(g), max(g), length = 40) 
+  yfit <- dnorm(xfit, mean = mean(g), sd = sd(g)) 
+  yfit <- yfit * diff(h$mids[1:2]) * length(g) 
+  
+  lines(xfit, yfit, col = "black", lwd = 2)
+}
+
+par(cex.axis = 2, cex.lab = 2)
+par(mfrow = c(1, 3))
+for (x in 1:3) 
+{
+  hist.dnorm(data, x)
+}
+```  
+
+## ZAD2  
+### Macierz korelacji  
+Dla zwykłej objaśnianej w oryginalnej formie  
+```{r, fig.width=15, fig.align='center', dev='svg', out.width='1600px', echo=FALSE}
+cor(data)
+
+par(cex.axis = 2, cex.lab = 2)
+par(mfrow = c(1, 3))
+
+plot(data$y ~ data$x)
+plot(data$y ~ data$x2)
+plot(data$x ~ data$x2)
+```
+Dla zmiennej objaśnianej zlogarytmowanej
+```{r, fig.width=15, fig.align='center', dev='svg', out.width='1600px', echo=FALSE}
+par(cex.axis = 2, cex.lab = 2)
+par(mfrow = c(1, 3))
+
+plot(log(data$y) ~ data$x)
+plot(log(data$y) ~ data$x2)
+plot(data$x ~ data$x2)
+``` 
+
+## ZAD3  
+### Model MNK  
+#### Model  
+```{r}
+model <- lm(y ~ ., data.train)
+summary(model)
+```
+#### Normalność reszt  
+```{r}
+shapiro.test(model$residuals)
+```
+$p.value < 0.05$ co oznacza decyzję o odrzuceniu hipotezy zerowej- reszty nie pochodzą z rozkładu normalnego.
+
+#### Heteroskedastyczność  
+```{r, fig.align='center'}
+bptest(model)
+plot(model$residuals, type = "l")
+```  
+$p.value < 0.05$ co oznacza decyzję o odrzuceniu hipotezy zerowej- występuje heteroskedastyczność, co zauważalne jest również na poniższym wykresie przedstawiającym reszty.  
+
+#### Autokorelacja  
+
+```{r, fig.align='center'}
+acf(model$residuals, main = "Autokorelacje reszt")
+```  
+Powyższy wykres jednoznacznie pokazuje, że autokorelacja reszt modelu nie występuje.  
+
+# czy można stosować na podstawie powyższych badać ten model? imo nie ale dokładnie dlaczego?
+
+##ZAD4  
+
+### Metoda największej wiarygodności  
+
+```{r message=FALSE, warning=FALSE}
+nll <- function(theta0, theta1, theta2)
+{
+  attach(data)
+  mu <-  exp(theta0 + x*theta1 + x2*theta2)
+  -sum(y*(log(mu)) - mu)
+}
+
+est <- stats4::mle(minuslog=nll, start=list(theta0 = 2, theta1 = 0, theta2 = 0))
+summary(est)
+```
+
